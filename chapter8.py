@@ -122,8 +122,8 @@ class Chapter8():
         molecule=0
         denominator=0
         c=Chapter8(self.file_A,self.file_B,self.rho)
-#        print(A,B,rho)
-        for count in range(100):
+        print(A,B,rho)
+        for count in range(10):
             alpha=c.forward_algorithm(data)
             beta=c.backward_algorithm(data)
 #            A=c.cal_A(alpha,beta,A,B,data)
