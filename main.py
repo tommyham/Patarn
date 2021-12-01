@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 #import seaborn as sns
 from chapter8 import Chapter8
-from KMeans import KMeans
+# from KMeans import KMeans,Data
+from ConvecCluster import ConvecCluster,Data
 import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.mixture
@@ -22,29 +23,38 @@ import pandas as pd
 # c8=Chapter8(file_A,file_B,rho)
 # # c8.backward_algorithm(data)
 # c8.baum_welch_algorithm(data)
-N = 1000
-pi=[0.3,0.2,0.2,0.2,0.1]
-eye=np.eye(2)
-mu=[[-6, 6], [-6, -5], [0, 0], [4, 6], [4, -4]]
-# cov=[[np.eye(2)] for i in range(len(mu))]
-cov=np.array([[[1.0, -1.0], [-1.0, 2]],
-            [[2, 0.4], [0.4, 0.5]],
-            [[0.3, 0], [0, 0.8]],
-            [[1.2, 0.4], [0.4, 0.5]],
-            [[0.2, 0], [0, 0.2]]])
-x=pd.DataFrame(index=[],columns=["X","Y"])
-for i in range(len(mu)):
-    temp=np.random.multivariate_normal(mu[i], cov[i], int(pi[i]*N))
-    temp=pd.DataFrame(temp,columns=["X","Y"])
-    x=pd.concat([x,temp],axis=0)
-    # x.insert(0, column=["X","Y"],temp)
-x=x.reset_index(drop=True)
-x.to_csv("dataset.csv")
+
+d=Data()
+# data=d.makeDataSet()
+data=d.readDataSet()
 num=5
-k=KMeans(x,num)
-# fig=plt.figure(figsize=(10,10))
-for i in range(20):
-    k.Assign()
-    k.Draw(i)
-    k.newCenter()
-k.MakeGif()
+epoc=5000
+# k=KMeans(data,num,epoc)
+# k.DrawInitialScatter()
+# for i in range(1,epoc+1):
+#     k.Assign()
+#     k.DrawScatter(i)
+#     k.DrawError(i)
+#     k.DrawAll(i)
+#     k.newCenter()
+#     # k.make2DGaussianDistribution()
+#     # k.makeBoundary()
+# k.MakeGif(k.outputfolder+k.folder,k.outputfolder+"/kmeans.gif")
+# k.MakeGif(k.outputfolder+k.folderAll,k.outputfolder+"/kmeansall.gif")
+# error=pd.DataFrame(np.array(k.error))
+# error.to_csv("error.csv",mode="a",index=False)
+
+size=[]
+c=ConvecCluster(data)
+c.DrawInitialScatter(0)
+c.pxw()
+for i in range(1,epoc+1):
+    c.newPi()
+    c.error()
+    size.append(len(c.pi[c.pi>0]))
+    if i in {1,5,100,1000,2000,3000,4000,5000,10000,15000,20000,25000,30000}:
+        c.DrawScatter(i)
+c.DrawLikehood()
+print(sorted(c.pi,reverse=True)[:5])
+pi=c.pi[c.pi>0]
+print(sum(pi))
