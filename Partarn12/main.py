@@ -7,8 +7,8 @@ import copy
 import math
 import Clustering as cl
 
-g=cl.Gibs()
-g.calculate()
+# g=cl.Gibs()
+# g.calculate()
 
 
 d=cl.Data()
@@ -19,8 +19,9 @@ sns.scatterplot(data=data,x="X",y="Y",ax=ax,legend="brief")
 ax.set_xlim(-6,6)
 ax.set_ylim(-6,6)
 
-# nonp=cl.NonParametric(data)
+nonp=cl.NonParametric(data)
 # for i in range(10):
-# nonp.calpxnew()
+nonp.calpxnew()
+nonp.epocProcessing()
 # nonp.upDataClass()
 # nonp.upDataParams()

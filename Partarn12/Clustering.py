@@ -120,20 +120,15 @@ class NonParametric:
         self.lam=[np.linalg.inv(self.convariance) for i in range(self.class_num)]
         self.prob_new=[]
     
-    # 引数のデータのクラス数が変化したかの確認(変化有り：True、変化なし：False)
-    def checkClassNum(self,before,after):
+    # 引数のデータのクラス数が変化したかの確認(変化あり：True、変化なし：False)
+    def checkClassNum(self,xk,x_k):
         # 各クラスのデータ数の算出
-        class_size_before=before.pivot_table(index=["class"],aggfunc="size")
-        class_size_after=after.pivot_table(index=["class"],aggfunc="size")
+        class_table=x_k.pivot_table(index=["class"],aggfunc="size")
         
-        if abs(len(class_size_before)-len(class_size_after)):
-            class_size_after=class_size_after.reset_index(drop=True)
-            self.class_num=len(class_size_after)
-            self.class_size=class_size_after
-            return True
+        if sum(class_table.index==xk["class"]):
+            return False
         
-        self.class_size=class_size_before
-        return False
+        return True
     
     def calpxnew(self):
         dimention=len(self.data_colum)
@@ -191,31 +186,32 @@ class NonParametric:
         
         return np.array(all_prob)
     
-    def upDataClass(self):
-        data_size=len(self.data)
+    def upDataClass(self,k):
         data=copy.deepcopy(self.data)
         
-        for k in range(data_size):
-            xk=data.loc[k][self.data_colum]
-            x_k=pd.concat([data.loc[:k-1],data.loc[k+1:]])
-            if self.checkClassNum(data,x_k):
-                self.mu=self.mu.pop(k)
-                self.lam=self.lam.pop(k)
-                self.data["class"]-=1
-            
-            probs=self.calpxtheta(xk,k)
-            probs=probs/sum(probs)
-            probs=np.cumsum(probs)
-            
-            diff=probs-np.random.rand()
-            new_class=min(np.where(diff>=0)[0])
-            xk["class"]=int(new_class)
-            # if len(x_k[x_k["class"]==new_class]):
-            #     pass
-            # else:
-            #     self.class_num+=1
-            self.data.loc[k]=xk
-        # self.data=data
+        xk=self.data.loc[k]
+        x_k=pd.concat([self.data.loc[:k-1],data.loc[k+1:]])
+        
+        if self.checkClassDecline(xk,x_k):
+            self.class_num-=1
+            self.mu.pop(int(xk["class"]))
+            self.lam.pop(int(xk["class"]))
+            pre_class=x_k["class"]
+            new_class=pre_class-(pre_class>xk["class"])*1
+            x_k["class"]=new_class
+            self.data["class"]=new_class
+        
+        probs=self.calpxtheta(xk[self.data_colum],k)
+        probs=probs/sum(probs)
+        probs=np.cumsum(probs)
+        
+        diff=probs-np.random.rand()
+        new_class=min(np.where(diff>=0)[0])
+        xk["class"]=int(new_class)
+        self.data.loc[k]=xk
+        
+        if self.checkClassNum(xk, x_k):
+            self.class_num+=1
         
         return True
     
@@ -262,7 +258,7 @@ class NonParametric:
         
         return gaus*wishart
     
-    def upDataParams(self):
+    def upDataParams(self,k):
         dimention=len(self.data_colum)
         self.class_size=self.data.pivot_table(index=["class"],aggfunc="size")
         self.class_num=len(self.class_size)
@@ -288,3 +284,10 @@ class NonParametric:
             mu_c=(n_i*average+self.beta*self.mu_0)/(n_i+self.beta)
             lam_c=(n_i+self.beta)*self.lam[i]
             v_c=self.v+n_i
+        
+    def epocProcessing(self):
+        data_size=len(self.data)
+        
+        for k in range(data_size):
+            self.upDataClass(k)
+            self.upDataParams(k)
