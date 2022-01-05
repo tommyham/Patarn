@@ -188,18 +188,19 @@ class NonParametric:
     
     def upDataClass(self,k):
         data=copy.deepcopy(self.data)
+        mu=copy.deepcopy(self.mu)
+        lam=copy.deepcopy(self.lam)
         
-        xk=self.data.loc[k]
-        x_k=pd.concat([self.data.loc[:k-1],data.loc[k+1:]])
+        xk=data.loc[k]
+        x_k=pd.concat([data.loc[:k-1],data.loc[k+1:]])
         
         if self.checkClassDecline(xk,x_k):
-            self.class_num-=1
-            self.mu.pop(int(xk["class"]))
-            self.lam.pop(int(xk["class"]))
+            mu.pop(int(xk["class"]))
+            lam.pop(int(xk["class"]))
             pre_class=x_k["class"]
             new_class=pre_class-(pre_class>xk["class"])*1
             x_k["class"]=new_class
-            self.data["class"]=new_class
+            data["class"]=new_class
         
         probs=self.calpxtheta(xk[self.data_colum],k)
         probs=probs/sum(probs)
@@ -208,12 +209,9 @@ class NonParametric:
         diff=probs-np.random.rand()
         new_class=min(np.where(diff>=0)[0])
         xk["class"]=int(new_class)
-        self.data.loc[k]=xk
+        data.loc[k]=xk
         
-        if self.checkClassNum(xk, x_k):
-            self.class_num+=1
-        
-        return True
+        return data,mu,lam
     
     def calMatrixPandas(self,x):
         dimention=len(self.data_colum)
@@ -258,18 +256,39 @@ class NonParametric:
         
         return gaus*wishart
     
-    def upDataParams(self,k):
-        dimention=len(self.data_colum)
-        self.class_size=self.data.pivot_table(index=["class"],aggfunc="size")
-        self.class_num=len(self.class_size)
+    def calWishart(self,v_c,S_q):
+        wishart=0
         
-        for i in range(len(self.class_size)):
-            n_i=self.class_size[i]
+        molecule=0
+        para1=np.linalg.det(lam_i)**((self.v-dimention-1)/2)
+        inv_S_q=np.linalg.inv(S_q)
+        para2=np.exp(-np.trace(np.dot(inv_S_q,lam_i))/2)
+        molecule=para1*para2
+        
+        denominator=0
+        para1=2**(self.v*dimention/2)
+        para2=np.pi**(dimention*(dimention-1)/4)
+        para3=np.linalg.det(S_q)**(self.v/2)
+        gamma=[math.gamma((self.v+1-i)/2) for i in range(dimention)]
+        para4=math.prod(gamma)
+        denominator=para1*para2*para3*para4
+        
+        wishart=molecule/denominator
+        
+    
+    def upDataParams(self,data):
+        dimention=len(self.data_colum)
+        class_table=data.pivot_table(index=["class"],aggfunc="size")
+        class_num=len(class_table)
+        
+        for i in range(len(class_table)):
+            n_i=class_table[i]
             data=self.data[self.data["class"]==i][self.data_colum]
-            average=data.mean()
+            class_data=data[data["class"]==i][self.data_colum]
+            average=class_data.mean()
             inv_S=np.linalg.inv(self.S)
             
-            diff=data-average
+            diff=class_data-average
             cal=diff.apply(self.calMatrixPandas,axis=1)
             para2=cal.sum()
             para2=np.array(para2).reshape(dimention,dimention)
@@ -289,5 +308,5 @@ class NonParametric:
         data_size=len(self.data)
         
         for k in range(data_size):
-            self.upDataClass(k)
+            data,mu,lam=self.upDataClass(k)
             self.upDataParams(k)
