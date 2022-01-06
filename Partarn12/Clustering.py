@@ -30,7 +30,7 @@ class Data:
         for i in range(len(self.mu)):
             temp=np.random.multivariate_normal(self.mu[i], self.cov[i], int(self.pi[i]*self.N))
             temp=pd.DataFrame(temp,columns=["X","Y"])
-            temp["class"]=i
+            temp["class"]=int(i)
             data=pd.concat([data,temp],axis=0)
         data=data.reset_index(drop=True)
         data.to_csv("dataset.csv")
@@ -309,6 +309,7 @@ class NonParametric:
             S_q=np.linalg.inv(inv_S_q)
             v_c=self.v+n_i
             new_lam=wishart(v_c,S_q).rvs()
+            # new_lam=np.linalg.inv(invwishart(v_c,S_q).rvs())
             
             mu_c=(n_i*average+self.beta*self.mu_0)/(n_i+self.beta)
             lam_c=(n_i+self.beta)*new_lam
@@ -372,10 +373,11 @@ class NonParametric:
         for i in range(epoc):
             for k in range(data_size):
                 data,mu,lam=self.calNewClass(k)
-                class_table=data.pivot_table(index=["class"],aggfunc="size")
                 mu,lam=self.calNewParams(data)
                 prob=self.calLikeHood(data, mu, lam)
-                if prob>self.prob_max:
+                if prob>self.prob_max or i<1:
+                # if True:
+                    class_table=data.pivot_table(index=["class"],aggfunc="size")
                     self.prob_max=prob
                     self.data=data
                     self.class_num=len(class_table)
@@ -389,6 +391,6 @@ class NonParametric:
             class_num.append(self.class_num)
             prob_max.append(self.prob_max.ln())
             if i in {0,10,50,100}:
-                sns.scatterplot(data=self.data,x="X",y="Y",hue="class")
+                sns.scatterplot(data=self.data,x="X",y="Y",hue="class",legend="brief")
         
         return class_num,prob_max
