@@ -3,7 +3,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import sklearn.mixture
 import scipy.stats as stats
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal,invwishart,wishart
+from decimal import Decimal
 import seaborn as sns
 import pandas as pd
 import copy
@@ -23,11 +24,13 @@ class Data:
                     [[0.8, 0.2], [0.2, 0.5]],
                     [[0.3, 0], [0, 0.4]]])
     
-    def makeDataSet(self):
+    def makeDataSet(self,N):
+        self.N=N
         data=pd.DataFrame(index=[],columns=["X","Y"])
         for i in range(len(self.mu)):
             temp=np.random.multivariate_normal(self.mu[i], self.cov[i], int(self.pi[i]*self.N))
             temp=pd.DataFrame(temp,columns=["X","Y"])
+            temp["class"]=i
             data=pd.concat([data,temp],axis=0)
         data=data.reset_index(drop=True)
         data.to_csv("dataset.csv")
@@ -106,9 +109,10 @@ class NonParametric:
         self.num_patarn=[len(data)]
         
         self.class_num=1
-        self.data["class"]=0
+        self.data["class"]=int(0)
         self.class_size=self.data.pivot_table(index=["class"],aggfunc="size")
         
+        self.epoc=100
         self.alpha=1.0
         self.beta=1/3
         self.v=15
@@ -119,6 +123,7 @@ class NonParametric:
         self.convariance=np.cov(data[self.data_colum].T)
         self.lam=[np.linalg.inv(self.convariance) for i in range(self.class_num)]
         self.prob_new=[]
+        self.prob_max=0
     
     # 引数のデータのクラス数が変化したかの確認(変化あり：True、変化なし：False)
     def checkClassNum(self,xk,x_k):
@@ -130,26 +135,42 @@ class NonParametric:
         
         return True
     
+    def calSb(self,xk):
+        dim=len(self.data_colum)
+        a=np.array(xk-self.mu_0).reshape(dim,1)
+        b=np.array(xk-self.mu_0).reshape(1,dim)
+        inv_S_b=np.linalg.inv(self.S)+self.beta/(1+self.beta)*np.dot(a,b)
+        
+        S_b=np.linalg.inv(inv_S_b)
+        
+        return np.linalg.det(S_b)**((self.v+1)/2)
+        
+    
     def calpxnew(self):
         dimention=len(self.data_colum)
-        for i in range(len(self.data)):
-            xk=self.data[self.data_colum].loc[i]
-            average_mu=self.average
-            a=np.array(xk-average_mu).reshape(dimention,1)
-            b=np.array(xk-average_mu).reshape(1,dimention)
-            inv_S_b=np.linalg.inv(self.S)+self.beta/(1+self.beta)*np.dot(a,b)
-            S_b=np.linalg.inv(inv_S_b)
-            det_S=np.linalg.det(self.S)
-            det_S_b=np.linalg.det(S_b)
-            
-            factor=(self.beta/((1+self.beta)*np.pi))**(dimention/2)
-            denominator=(det_S**(self.v/2)*((self.v+1)/2-1))
-            molecule=det_S_b**((self.v+1)/2)
-            prob_new=factor*molecule/denominator
-            
-            self.prob_new.append(prob_new)
+        factor=(self.beta/((1+self.beta)*np.pi))**(dimention/2)
+        det_S=np.linalg.det(self.S)
+        denominator=(det_S**(self.v/2))*math.gamma((self.v+1-dimention)/2)
         
-        self.prob_new=np.array(self.prob_new)
+        S_b=self.data[self.data_colum].apply(self.calSb,axis=1)
+        
+        prob=factor*S_b*math.gamma((self.v+1)/2)/denominator
+        
+        # for i in range(len(self.data)):
+        #     xk=self.data[self.data_colum].loc[i]
+        #     average_mu=self.average
+        #     a=np.array(xk-average_mu).reshape(dimention,1)
+        #     b=np.array(xk-average_mu).reshape(1,dimention)
+        #     inv_S_b=np.linalg.inv(self.S)+self.beta/(1+self.beta)*np.dot(a,b)
+        #     S_b=np.linalg.inv(inv_S_b)
+        #     det_S_b=np.linalg.det(S_b)
+            
+        #     molecule=(det_S_b**((self.v+1)/2))*math.gamma((self.v+1)/2)
+        #     prob_new=factor*molecule/denominator
+            
+        #     self.prob_new.append(prob_new)
+        
+        self.prob_new=np.array(prob)
         
         return True
     
@@ -158,16 +179,10 @@ class NonParametric:
         all_prob=[]
         for i in range(self.class_num):
             n_i=self.class_size[i]
-            mu=self.mu[i]
+            mu=np.array(self.mu[i]).reshape(dimention)
             lam=self.lam[i]
-            det=np.linalg.det(lam)
-            
-            diff=xk-mu
-            factor=np.sqrt(det)/((2*np.pi)**(dimention/2))
-            temp=np.dot(lam,diff)
-            para1=n_i/(len(self.data)-1+self.alpha)
-            para2=factor*np.exp(-np.dot(diff,temp)/2)
-            prob=para1*para2
+            inv_lam=np.linalg.inv(lam)
+            prob=multivariate_normal(mu,inv_lam).pdf(xk)
             all_prob.append(prob)
         
         # average_mu=self.average
@@ -186,7 +201,7 @@ class NonParametric:
         
         return np.array(all_prob)
     
-    def upDataClass(self,k):
+    def calNewClass(self,k):
         data=copy.deepcopy(self.data)
         mu=copy.deepcopy(self.mu)
         lam=copy.deepcopy(self.lam)
@@ -194,7 +209,7 @@ class NonParametric:
         xk=data.loc[k]
         x_k=pd.concat([data.loc[:k-1],data.loc[k+1:]])
         
-        if self.checkClassDecline(xk,x_k):
+        if self.checkClassNum(xk,x_k):
             mu.pop(int(xk["class"]))
             lam.pop(int(xk["class"]))
             pre_class=x_k["class"]
@@ -256,34 +271,27 @@ class NonParametric:
         
         return gaus*wishart
     
-    def calWishart(self,v_c,S_q):
-        wishart=0
+    def calInvWishart(self,v_c,S_q):
+        lam_i=wishart(v_c,S_q).rvs()
         
-        molecule=0
-        para1=np.linalg.det(lam_i)**((self.v-dimention-1)/2)
-        inv_S_q=np.linalg.inv(S_q)
-        para2=np.exp(-np.trace(np.dot(inv_S_q,lam_i))/2)
-        molecule=para1*para2
+        return lam_i
+    
+    def calInvGaus(self,mu_c,lam_c):
+        inv_lam_c=np.linalg.inv(lam_c)
         
-        denominator=0
-        para1=2**(self.v*dimention/2)
-        para2=np.pi**(dimention*(dimention-1)/4)
-        para3=np.linalg.det(S_q)**(self.v/2)
-        gamma=[math.gamma((self.v+1-i)/2) for i in range(dimention)]
-        para4=math.prod(gamma)
-        denominator=para1*para2*para3*para4
+        mu_i=multivariate_normal(mu_c,inv_lam_c).rvs()
         
-        wishart=molecule/denominator
+        return mu_i
         
     
-    def upDataParams(self,data):
+    def calNewParams(self,data):
         dimention=len(self.data_colum)
         class_table=data.pivot_table(index=["class"],aggfunc="size")
-        class_num=len(class_table)
+        class_mu=[]
+        class_lam=[]
         
         for i in range(len(class_table)):
             n_i=class_table[i]
-            data=self.data[self.data["class"]==i][self.data_colum]
             class_data=data[data["class"]==i][self.data_colum]
             average=class_data.mean()
             inv_S=np.linalg.inv(self.S)
@@ -299,14 +307,88 @@ class NonParametric:
             
             inv_S_q=inv_S+para2+para3
             S_q=np.linalg.inv(inv_S_q)
+            v_c=self.v+n_i
+            new_lam=wishart(v_c,S_q).rvs()
             
             mu_c=(n_i*average+self.beta*self.mu_0)/(n_i+self.beta)
-            lam_c=(n_i+self.beta)*self.lam[i]
-            v_c=self.v+n_i
+            lam_c=(n_i+self.beta)*new_lam
+            sigma=np.linalg.inv(lam_c)
+            
+            new_mu=multivariate_normal(mu_c,sigma).rvs()
+            
+            class_mu.append(pd.DataFrame(new_mu))
+            class_lam.append(pd.DataFrame(new_lam))
         
-    def epocProcessing(self):
+        return class_mu,class_lam
+    
+    # 返り値はDecimal型
+    def calEwens(self,class_table):
+        molecule=0
+        class_fc=class_table.apply(lambda s:Decimal(math.factorial(s-1)))
+        molecule=Decimal(self.alpha**len(class_table))*np.prod(class_fc)
+        
+        denominator=0
+        arrayD=[Decimal(i) for i in range(int(self.alpha),int(self.alpha+sum(class_table)))]
+        denominator=np.prod(arrayD)
+        
+        return molecule/denominator
+    
+    # 返り値はDecimal型
+    def calLikeHood(self,data,mu,lam):
+        class_table=data.pivot_table(index=["class"],aggfunc="size")
+        
+        para1=self.calEwens(class_table)
+        
+        prob=[]
+        for i in range(len(class_table)):
+            data_i=data[data["class"]==i][self.data_colum]
+            mu_i=mu[i]
+            mu_i=np.array(mu_i).reshape(len(self.data_colum))
+            lam_i=lam[i]
+            sigma=np.linalg.inv(self.beta*lam_i)
+            
+            gaus=multivariate_normal(self.mu_0,sigma).pdf(mu_i)
+            wish=wishart(self.v,self.S).pdf(lam_i)
+            para2=Decimal(gaus*wish)
+            
+            sigma=np.linalg.inv(lam_i)
+            func=lambda s:multivariate_normal(mu_i,sigma).pdf(s)
+            gaus=data_i.apply(func,axis=1)
+            gaus=[Decimal(i)for i in gaus]
+            para3=np.prod(gaus)
+            # prob=prob*para2*para3
+            prob.append(para2*para3)
+        
+        return para1*np.prod(prob)
+        
+        
+    def epocProcessing(self,N):
         data_size=len(self.data)
+        epoc=N
+        count=0
         
-        for k in range(data_size):
-            data,mu,lam=self.upDataClass(k)
-            self.upDataParams(k)
+        class_num=[]
+        prob_max=[]
+        for i in range(epoc):
+            for k in range(data_size):
+                data,mu,lam=self.calNewClass(k)
+                class_table=data.pivot_table(index=["class"],aggfunc="size")
+                mu,lam=self.calNewParams(data)
+                prob=self.calLikeHood(data, mu, lam)
+                if prob>self.prob_max:
+                    self.prob_max=prob
+                    self.data=data
+                    self.class_num=len(class_table)
+                    self.class_size=class_table
+                    self.mu=mu
+                    self.lam=lam
+                    count=0
+                else:
+                    count+=1
+                    pass
+            class_num.append(self.class_num)
+            prob_max.append(self.prob_max.ln())
+            if i in {0,10,50,100}:
+                sns.scatterplot(data=self.data,x="X",y="Y",hue="class")
+        
+        return class_num,prob_max
