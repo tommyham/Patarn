@@ -201,10 +201,10 @@ class NonParametric:
         
         return np.array(all_prob)
     
-    def calNewClass(self,k):
-        data=copy.deepcopy(self.data)
-        mu=copy.deepcopy(self.mu)
-        lam=copy.deepcopy(self.lam)
+    def calNewClass(self,k,data,mu,lam):
+        # data=copy.deepcopy(self.data)
+        # mu=copy.deepcopy(self.mu)
+        # lam=copy.deepcopy(self.lam)
         
         xk=data.loc[k]
         x_k=pd.concat([data.loc[:k-1],data.loc[k+1:]])
@@ -371,23 +371,26 @@ class NonParametric:
         class_num=[]
         prob_max=[]
         for i in range(epoc):
+            data=copy.deepcopy(self.data)
+            mu=copy.deepcopy(self.mu)
+            lam=copy.deepcopy(self.lam)
             for k in range(data_size):
-                data,mu,lam=self.calNewClass(k)
+                data,mu,lam=self.calNewClass(k,data,mu,lam)
                 mu,lam=self.calNewParams(data)
-                prob=self.calLikeHood(data, mu, lam)
-                if prob>self.prob_max or i<1:
-                # if True:
-                    class_table=data.pivot_table(index=["class"],aggfunc="size")
-                    self.prob_max=prob
-                    self.data=data
-                    self.class_num=len(class_table)
-                    self.class_size=class_table
-                    self.mu=mu
-                    self.lam=lam
-                    count=0
-                else:
-                    count+=1
-                    pass
+            prob=self.calLikeHood(data, mu, lam)
+            if prob>self.prob_max or i<1:
+            # if True:
+                class_table=data.pivot_table(index=["class"],aggfunc="size")
+                self.prob_max=prob
+                self.data=data
+                self.class_num=len(class_table)
+                self.class_size=class_table
+                self.mu=mu
+                self.lam=lam
+                count=0
+            else:
+                count+=1
+                pass
             class_num.append(self.class_num)
             prob_max.append(self.prob_max.ln())
             if i in {0,10,50,100}:
