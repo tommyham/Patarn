@@ -392,5 +392,6 @@ class NonParametric:
             prob_max.append(self.prob_max.ln())
             if i in {0,10,50,100}:
                 sns.scatterplot(data=self.data,x="X",y="Y",hue="class",legend="brief")
+        sns.scatterplot(data=self.data,x="X",y="Y",hue="class",legend="brief")
         
         return class_num,prob_max

@@ -40,7 +40,7 @@ print(prob,prob.ln())
 
 nonp=cl.NonParametric(data[{"X","Y"}])
 nonp.calpxnew()
-class_num,prob=nonp.epocProcessing(50)
+class_num,prob=nonp.epocProcessing(100)
 # print(class_num,prob)
 # nonp.upDataClass()
 # nonp.upDataParams()
